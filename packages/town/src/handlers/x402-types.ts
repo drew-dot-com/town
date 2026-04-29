@@ -165,3 +165,84 @@ export const USDC_ABI = [
     outputs: [],
   },
 ] as const;
+
+/**
+ * Decoded payload from the x402 `paymentPayload` field (base64-encoded JSON).
+ * Used by the facilitator /verify and /settle endpoints.
+ * Follows the Coinbase x402 "exact" scheme format.
+ */
+export interface X402SignedPaymentPayload {
+  x402Version: number;
+  scheme: string;
+  network: string;
+  payload: {
+    /** Combined 65-byte ECDSA signature: 0x + r(64 hex) + s(64 hex) + v(2 hex). */
+    signature: string;
+    authorization: {
+      from: string;
+      to: string;
+      /** USDC amount as decimal string (e.g., "1000000"). */
+      value: string;
+      /** Unix timestamp as string. */
+      validAfter: string;
+      /** Unix timestamp as string. */
+      validBefore: string;
+      nonce: string;
+    };
+  };
+}
+
+/**
+ * Payment requirements from an x402-enabled server's request to the facilitator.
+ * Specifies which chain, asset, recipient, and amount are expected.
+ */
+export interface X402PaymentRequirements {
+  /** Must be "exact" — the only scheme TOON supports. */
+  scheme: string;
+  /** Network identifier string (e.g., "base", "base-sepolia"). */
+  network: string;
+  /** Maximum USDC amount allowed (as decimal string). */
+  maxAmountRequired: string;
+  /** The resource URI being gated. */
+  resource: string;
+  description?: string;
+  mimeType?: string;
+  /** EVM address that must receive the payment (facilitator). */
+  payTo: string;
+  maxTimeoutSeconds?: number;
+  /** USDC contract address for this chain. */
+  asset: string;
+  outputSchema?: unknown;
+  extra?: unknown;
+}
+
+/**
+ * Request body for POST /verify and POST /settle (Coinbase x402 spec).
+ */
+export interface X402FacilitatorRequest {
+  x402Version: number;
+  /** Base64-encoded X402SignedPaymentPayload JSON. */
+  paymentPayload: string;
+  paymentRequirements: X402PaymentRequirements;
+}
+
+/**
+ * Response body for POST /verify.
+ */
+export interface X402VerifyResponse {
+  isValid: boolean;
+  invalidReason: string | null;
+  /** Payer EVM address (0x...) on success, null on failure. */
+  payer: string | null;
+}
+
+/**
+ * Response body for POST /settle.
+ */
+export interface X402SettleResponse {
+  success: boolean;
+  txHash: string | null;
+  /** Network identifier string echoed from paymentRequirements. */
+  networkId: string | null;
+  errorReason: string | null;
+}
