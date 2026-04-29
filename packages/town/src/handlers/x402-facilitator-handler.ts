@@ -214,6 +214,9 @@ function decodePaymentPayload(paymentPayload: string): Eip3009Authorization {
   if (sig.length !== 130) {
     throw new Error(`Invalid signature length: expected 130 hex chars, got ${sig.length}`);
   }
+  if (!/^[0-9a-fA-F]{130}$/.test(sig)) {
+    throw new Error('Invalid signature: expected 130 hex characters');
+  }
   const r = `0x${sig.slice(0, 64)}`;
   const s = `0x${sig.slice(64, 128)}`;
   const v = parseInt(sig.slice(128, 130), 16);
