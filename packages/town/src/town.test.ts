@@ -830,6 +830,36 @@ describe('startTown() x402 viem client wiring -- static analysis', () => {
 });
 
 // ============================================================================
+// x402 Facilitator -- startTown() wiring (static analysis)
+// ============================================================================
+
+describe('startTown() x402 facilitator wiring -- static analysis', () => {
+  const sourcePath = resolve(__dirname, 'town.ts');
+  const source = readFileSync(sourcePath, 'utf-8');
+
+  it('town.ts imports createX402FacilitatorHandler', () => {
+    expect(source).toContain('createX402FacilitatorHandler');
+  });
+
+  it('town.ts wires facilitatorHandler.handleVerify to a POST route', () => {
+    expect(source).toContain('facilitatorHandler.handleVerify');
+    expect(source).toMatch(/app\.post\s*\(\s*['"]\/verify['"]/);
+  });
+
+  it('town.ts wires facilitatorHandler.handleSettle to a POST route', () => {
+    expect(source).toContain('facilitatorHandler.handleSettle');
+    expect(source).toMatch(/app\.post\s*\(\s*['"]\/settle['"]/);
+  });
+
+  it('town.ts includes facilitatorEndpoints in the service discovery block', () => {
+    expect(source).toContain('facilitatorEndpoints');
+    // verify and settle paths appear inside the facilitatorEndpoints block
+    expect(source).toMatch(/facilitatorEndpoints\s*:\s*\{[^}]*verify\s*:/s);
+    expect(source).toMatch(/facilitatorEndpoints\s*:\s*\{[^}]*settle\s*:/s);
+  });
+});
+
+// ============================================================================
 // Story 5.4: Skill Descriptors -- startTown() integration (static analysis)
 // ============================================================================
 

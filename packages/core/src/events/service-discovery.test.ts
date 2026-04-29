@@ -1114,6 +1114,109 @@ describe('Story 3.5: kind:10035 Service Discovery Events', () => {
     });
   });
 
+  // --------------------------------------------------------------------------
+  // facilitatorEndpoints field (x402 facilitator wiring)
+  // --------------------------------------------------------------------------
+  describe('parseServiceDiscovery() facilitatorEndpoints field', () => {
+    it('parses facilitatorEndpoints with valid verify and settle strings', () => {
+      // Arrange: x402 with both facilitatorEndpoints strings present
+      const event = {
+        kind: 10035,
+        content: JSON.stringify({
+          serviceType: 'relay',
+          ilpAddress: 'g.toon.test',
+          pricing: { basePricePerByte: 10, currency: 'USDC' },
+          supportedKinds: [1],
+          capabilities: ['relay', 'x402'],
+          chain: 'anvil',
+          version: '0.1.0',
+          x402: {
+            enabled: true,
+            endpoint: '/publish',
+            facilitatorEndpoints: { verify: '/verify', settle: '/settle' },
+          },
+        }),
+        tags: [['d', 'toon-service-discovery']],
+        created_at: Math.floor(Date.now() / 1000),
+        pubkey: 'a'.repeat(64),
+        id: 'b'.repeat(64),
+        sig: 'c'.repeat(128),
+      };
+
+      // Act
+      const result = parseServiceDiscovery(event);
+
+      // Assert: facilitatorEndpoints round-trips correctly
+      expect(result).not.toBeNull();
+      expect(result!.x402).toBeDefined();
+      expect(result!.x402!.facilitatorEndpoints).toBeDefined();
+      expect(result!.x402!.facilitatorEndpoints!.verify).toBe('/verify');
+      expect(result!.x402!.facilitatorEndpoints!.settle).toBe('/settle');
+    });
+
+    it('returns null when facilitatorEndpoints.verify is not a string', () => {
+      // Arrange: verify is a number, not a string
+      const event = {
+        kind: 10035,
+        content: JSON.stringify({
+          serviceType: 'relay',
+          ilpAddress: 'g.toon.test',
+          pricing: { basePricePerByte: 10, currency: 'USDC' },
+          supportedKinds: [1],
+          capabilities: ['relay', 'x402'],
+          chain: 'anvil',
+          version: '0.1.0',
+          x402: {
+            enabled: true,
+            endpoint: '/publish',
+            facilitatorEndpoints: { verify: 42, settle: '/settle' },
+          },
+        }),
+        tags: [['d', 'toon-service-discovery']],
+        created_at: Math.floor(Date.now() / 1000),
+        pubkey: 'a'.repeat(64),
+        id: 'b'.repeat(64),
+        sig: 'c'.repeat(128),
+      };
+
+      // Act
+      const result = parseServiceDiscovery(event);
+
+      // Assert: invalid verify type causes null return
+      expect(result).toBeNull();
+    });
+
+    it('parses fine when facilitatorEndpoints is absent (field is optional)', () => {
+      // Arrange: x402 with endpoint but no facilitatorEndpoints
+      const event = {
+        kind: 10035,
+        content: JSON.stringify({
+          serviceType: 'relay',
+          ilpAddress: 'g.toon.test',
+          pricing: { basePricePerByte: 10, currency: 'USDC' },
+          supportedKinds: [1],
+          capabilities: ['relay', 'x402'],
+          chain: 'anvil',
+          version: '0.1.0',
+          x402: { enabled: true, endpoint: '/publish' },
+        }),
+        tags: [['d', 'toon-service-discovery']],
+        created_at: Math.floor(Date.now() / 1000),
+        pubkey: 'a'.repeat(64),
+        id: 'b'.repeat(64),
+        sig: 'c'.repeat(128),
+      };
+
+      // Act
+      const result = parseServiceDiscovery(event);
+
+      // Assert: parses successfully; facilitatorEndpoints simply absent
+      expect(result).not.toBeNull();
+      expect(result!.x402).toBeDefined();
+      expect(result!.x402!.facilitatorEndpoints).toBeUndefined();
+    });
+  });
+
   // ==========================================================================
   // Story 5.4: Skill Descriptor in Service Discovery
   // ==========================================================================
