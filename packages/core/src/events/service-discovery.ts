@@ -75,6 +75,13 @@ export interface ServiceDiscoveryContent {
     enabled: boolean;
     /** HTTP endpoint path (e.g., '/publish'). */
     endpoint?: string;
+    /** Facilitator endpoint paths for verify and settle operations. */
+    facilitatorEndpoints?: {
+      /** HTTP path for the /verify endpoint. */
+      verify: string;
+      /** HTTP path for the /settle endpoint. */
+      settle: string;
+    };
   };
   /** Nostr event kinds this node accepts for storage. */
   supportedKinds: number[];
@@ -217,6 +224,21 @@ export function parseServiceDiscovery(
     if (endpoint !== undefined) {
       if (typeof endpoint !== 'string') return null;
       x402Result.endpoint = endpoint;
+    }
+
+    const facilitatorEndpoints = x402Record['facilitatorEndpoints'];
+    if (facilitatorEndpoints !== undefined) {
+      if (
+        typeof facilitatorEndpoints !== 'object' ||
+        facilitatorEndpoints === null ||
+        Array.isArray(facilitatorEndpoints)
+      )
+        return null;
+      const feRecord = facilitatorEndpoints as Record<string, unknown>;
+      const verify = feRecord['verify'];
+      const settle = feRecord['settle'];
+      if (typeof verify !== 'string' || typeof settle !== 'string') return null;
+      x402Result.facilitatorEndpoints = { verify, settle };
     }
 
     result.x402 = x402Result;

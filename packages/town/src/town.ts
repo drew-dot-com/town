@@ -40,6 +40,7 @@ import type {
 } from '@toon-protocol/sdk';
 import { createEventStorageHandler } from './handlers/event-storage-handler.js';
 import { createX402Handler } from './handlers/x402-publish-handler.js';
+import { createX402FacilitatorHandler } from './handlers/x402-facilitator-handler.js';
 import { createHealthResponse } from './health.js';
 import {
   BootstrapService,
@@ -906,6 +907,18 @@ export async function startTown(config: TownConfig): Promise<TownInstance> {
   app.get('/publish', (c: Context) => x402Handler.handlePublish(c));
   app.post('/publish', (c: Context) => x402Handler.handlePublish(c));
 
+  // --- 10e. x402 facilitator /verify and /settle routes ---
+  const facilitatorHandler = createX402FacilitatorHandler({
+    x402Enabled,
+    chainConfig,
+    facilitatorAddress: config.facilitatorAddress ?? identity.evmAddress,
+    walletClient: x402WalletClient,
+    publicClient: x402PublicClient,
+  });
+
+  app.post('/verify', (c: Context) => facilitatorHandler.handleVerify(c));
+  app.post('/settle', (c: Context) => facilitatorHandler.handleSettle(c));
+
   const blsServer: ServerType = serve({
     fetch: app.fetch,
     port: blsPort,
@@ -1122,6 +1135,10 @@ export async function startTown(config: TownConfig): Promise<TownInstance> {
         serviceDiscoveryContent.x402 = {
           enabled: true,
           endpoint: '/publish',
+          facilitatorEndpoints: {
+            verify: '/verify',
+            settle: '/settle',
+          },
         };
       }
 
