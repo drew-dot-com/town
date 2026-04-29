@@ -88,8 +88,8 @@ export async function verifyEip3009Auth(
   }
 
   // Check 2: USDC balance check (read-only eth_call, ~50ms)
-  checksPerformed.push('usdc-balance');
   if (publicClient) {
+    checksPerformed.push('usdc-balance');
     try {
       const balance = await publicClient.readContract({
         address: chainConfig.usdcAddress as `0x${string}`,
@@ -106,8 +106,8 @@ export async function verifyEip3009Auth(
   }
 
   // Check 3: Nonce freshness check (read-only eth_call, ~50ms)
-  checksPerformed.push('nonce-freshness');
   if (publicClient) {
+    checksPerformed.push('nonce-freshness');
     try {
       const used = await publicClient.readContract({
         address: chainConfig.usdcAddress as `0x${string}`,

@@ -1548,7 +1548,7 @@ describe('Story 3.3: x402 /publish Endpoint', () => {
       expect(result.passed).toBe(true);
       expect(result.checksPerformed).toContain('toon-shallow-parse');
       // The check was actually executed (not skipped)
-      expect(result.checksPerformed.indexOf('toon-shallow-parse')).toBe(3);
+      expect(result.checksPerformed.indexOf('toon-shallow-parse')).toBe(1);
     });
 
     it('invalid TOON data fails check 4 through real preflight pipeline', async () => {
@@ -1584,11 +1584,9 @@ describe('Story 3.3: x402 /publish Endpoint', () => {
       // Then: fails at check 4 (TOON shallow parse)
       expect(result.passed).toBe(false);
       expect(result.failedCheck).toBe('toon-shallow-parse');
-      // Checks 1-3 passed/skipped, then check 4 failed
+      // Checks 1 passed, 2-3 skipped (no publicClient), then check 4 failed
       expect(result.checksPerformed).toEqual([
         'eip3009-signature',
-        'usdc-balance',
-        'nonce-freshness',
         'toon-shallow-parse',
       ]);
     });
@@ -1738,10 +1736,9 @@ describe('Story 3.3: x402 /publish Endpoint', () => {
       // Then: fails at check 5 (Schnorr signature)
       expect(result.passed).toBe(false);
       expect(result.failedCheck).toBe('schnorr-signature');
+      // Checks 1 passed, 2-3 skipped (no publicClient), 4 passed, 5 failed
       expect(result.checksPerformed).toEqual([
         'eip3009-signature',
-        'usdc-balance',
-        'nonce-freshness',
         'toon-shallow-parse',
         'schnorr-signature',
       ]);
@@ -1921,10 +1918,9 @@ describe('Story 3.3: x402 /publish Endpoint', () => {
       // Then: fails at check 6 (destination unreachable)
       expect(result.passed).toBe(false);
       expect(result.failedCheck).toBe('destination-reachability');
+      // Checks 1 passed, 2-3 skipped (no publicClient), 4 passed, 5 skipped (devMode), 6 failed
       expect(result.checksPerformed).toEqual([
         'eip3009-signature',
-        'usdc-balance',
-        'nonce-freshness',
         'toon-shallow-parse',
         'schnorr-signature',
         'destination-reachability',
