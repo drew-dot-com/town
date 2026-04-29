@@ -25,6 +25,109 @@ import type { Eip3009Authorization, EventStoreLike } from './x402-types.js';
 import { EIP_3009_TYPES, USDC_EIP712_DOMAIN, USDC_ABI } from './x402-types.js';
 
 /**
+ * Encode an EIP-3009 authorization's v, r, s components into a
+ * compact signature hex string for viem's verifyTypedData.
+ */
+function encodeSignature(auth: Eip3009Authorization): `0x${string}` {
+  // r (32 bytes) + s (32 bytes) + v (1 byte)
+  const r = auth.r.startsWith('0x') ? auth.r.slice(2) : auth.r;
+  const s = auth.s.startsWith('0x') ? auth.s.slice(2) : auth.s;
+  const v = auth.v.toString(16).padStart(2, '0');
+  return `0x${r}${s}${v}`;
+}
+
+/**
+ * Result of EIP-3009 on-chain authorization checks (checks 1-3).
+ * Shared by runPreflight and the x402 facilitator handler.
+ */
+export interface Eip3009VerifyResult {
+  valid: boolean;
+  invalidReason?: string;
+  /** Which of the three checks were executed before returning. */
+  checksPerformed: string[];
+}
+
+/**
+ * Run EIP-3009 authorization checks 1-3 (signature, balance, nonce freshness).
+ * All checks are free (no gas). Used by both runPreflight and the facilitator
+ * /verify and /settle endpoints.
+ */
+export async function verifyEip3009Auth(
+  authorization: Eip3009Authorization,
+  chainConfig: ChainPreset,
+  publicClient: PublicClient | undefined
+): Promise<Eip3009VerifyResult> {
+  const checksPerformed: string[] = [];
+
+  // Check 1: EIP-3009 signature verification (off-chain, ~1ms)
+  checksPerformed.push('eip3009-signature');
+  try {
+    const domain = {
+      ...USDC_EIP712_DOMAIN,
+      chainId: chainConfig.chainId,
+      verifyingContract: chainConfig.usdcAddress as `0x${string}`,
+    };
+    const valid = await verifyTypedData({
+      address: authorization.from as `0x${string}`,
+      domain,
+      types: EIP_3009_TYPES,
+      primaryType: 'TransferWithAuthorization',
+      message: {
+        from: authorization.from as `0x${string}`,
+        to: authorization.to as `0x${string}`,
+        value: authorization.value,
+        validAfter: BigInt(authorization.validAfter),
+        validBefore: BigInt(authorization.validBefore),
+        nonce: authorization.nonce as `0x${string}`,
+      },
+      signature: encodeSignature(authorization),
+    });
+    if (!valid) return { valid: false, invalidReason: 'eip3009-signature', checksPerformed };
+  } catch {
+    return { valid: false, invalidReason: 'eip3009-signature', checksPerformed };
+  }
+
+  // Check 2: USDC balance check (read-only eth_call, ~50ms)
+  checksPerformed.push('usdc-balance');
+  if (publicClient) {
+    try {
+      const balance = await publicClient.readContract({
+        address: chainConfig.usdcAddress as `0x${string}`,
+        abi: USDC_ABI,
+        functionName: 'balanceOf',
+        args: [authorization.from as `0x${string}`],
+      });
+      if ((balance as bigint) < authorization.value) {
+        return { valid: false, invalidReason: 'usdc-balance', checksPerformed };
+      }
+    } catch {
+      return { valid: false, invalidReason: 'usdc-balance', checksPerformed };
+    }
+  }
+
+  // Check 3: Nonce freshness check (read-only eth_call, ~50ms)
+  checksPerformed.push('nonce-freshness');
+  if (publicClient) {
+    try {
+      const used = await publicClient.readContract({
+        address: chainConfig.usdcAddress as `0x${string}`,
+        abi: USDC_ABI,
+        functionName: 'authorizationState',
+        args: [
+          authorization.from as `0x${string}`,
+          authorization.nonce as `0x${string}`,
+        ],
+      });
+      if (used) return { valid: false, invalidReason: 'nonce-freshness', checksPerformed };
+    } catch {
+      return { valid: false, invalidReason: 'nonce-freshness', checksPerformed };
+    }
+  }
+
+  return { valid: true, checksPerformed };
+}
+
+/**
  * Result of running the pre-flight validation pipeline.
  */
 export interface PreflightResult {
@@ -82,83 +185,19 @@ export async function runPreflight(
 ): Promise<PreflightResult> {
   const checksPerformed: string[] = [];
 
-  // --- Check 1: EIP-3009 signature verification (off-chain) ---
-  checksPerformed.push('eip3009-signature');
-  try {
-    const domain = {
-      ...USDC_EIP712_DOMAIN,
-      chainId: config.chainConfig.chainId,
-      verifyingContract: config.chainConfig.usdcAddress as `0x${string}`,
+  // --- Checks 1-3: EIP-3009 signature, balance, nonce freshness ---
+  const eip3009Result = await verifyEip3009Auth(
+    authorization,
+    config.chainConfig,
+    config.publicClient
+  );
+  checksPerformed.push(...eip3009Result.checksPerformed);
+  if (!eip3009Result.valid) {
+    return {
+      passed: false,
+      failedCheck: eip3009Result.invalidReason,
+      checksPerformed,
     };
-
-    const valid = await verifyTypedData({
-      address: authorization.from as `0x${string}`,
-      domain,
-      types: EIP_3009_TYPES,
-      primaryType: 'TransferWithAuthorization',
-      message: {
-        from: authorization.from as `0x${string}`,
-        to: authorization.to as `0x${string}`,
-        value: authorization.value,
-        validAfter: BigInt(authorization.validAfter),
-        validBefore: BigInt(authorization.validBefore),
-        nonce: authorization.nonce as `0x${string}`,
-      },
-      signature: encodeSignature(authorization),
-    });
-
-    if (!valid) {
-      return {
-        passed: false,
-        failedCheck: 'eip3009-signature',
-        checksPerformed,
-      };
-    }
-  } catch {
-    return { passed: false, failedCheck: 'eip3009-signature', checksPerformed };
-  }
-
-  // --- Check 2: USDC balance check (read-only eth_call) ---
-  checksPerformed.push('usdc-balance');
-  if (config.publicClient) {
-    try {
-      const balance = await config.publicClient.readContract({
-        address: config.chainConfig.usdcAddress as `0x${string}`,
-        abi: USDC_ABI,
-        functionName: 'balanceOf',
-        args: [authorization.from as `0x${string}`],
-      });
-      if ((balance as bigint) < authorization.value) {
-        return { passed: false, failedCheck: 'usdc-balance', checksPerformed };
-      }
-    } catch {
-      return { passed: false, failedCheck: 'usdc-balance', checksPerformed };
-    }
-  }
-
-  // --- Check 3: Nonce freshness check (read-only eth_call) ---
-  checksPerformed.push('nonce-freshness');
-  if (config.publicClient) {
-    try {
-      const used = await config.publicClient.readContract({
-        address: config.chainConfig.usdcAddress as `0x${string}`,
-        abi: USDC_ABI,
-        functionName: 'authorizationState',
-        args: [
-          authorization.from as `0x${string}`,
-          authorization.nonce as `0x${string}`,
-        ],
-      });
-      if (used) {
-        return {
-          passed: false,
-          failedCheck: 'nonce-freshness',
-          checksPerformed,
-        };
-      }
-    } catch {
-      return { passed: false, failedCheck: 'nonce-freshness', checksPerformed };
-    }
   }
 
   // --- Check 4: TOON shallow parse ---
@@ -221,16 +260,4 @@ export async function runPreflight(
   }
 
   return { passed: true, checksPerformed };
-}
-
-/**
- * Encode an EIP-3009 authorization's v, r, s components into a
- * compact signature hex string for viem's verifyTypedData.
- */
-function encodeSignature(auth: Eip3009Authorization): `0x${string}` {
-  // r (32 bytes) + s (32 bytes) + v (1 byte)
-  const r = auth.r.startsWith('0x') ? auth.r.slice(2) : auth.r;
-  const s = auth.s.startsWith('0x') ? auth.s.slice(2) : auth.s;
-  const v = auth.v.toString(16).padStart(2, '0');
-  return `0x${r}${s}${v}`;
 }
